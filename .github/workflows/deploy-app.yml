@@ -1,0 +1,70 @@
+name: Build and Deploy APP CI/CD
+
+on:
+  # push:
+  #   paths:
+  #     - "Dockerfile"
+  #     - "requirements.txt"
+  #     - "run.py"
+  #     - "app/**"  # Include app directory in case of dependency changes
+  #   branches:
+  #     - main  # Modify if your default branch is different
+
+  workflow_dispatch:  # Allows manual trigger
+
+jobs:
+  build:
+    name: Containerization
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: DockerHub Login
+        uses: docker/login-action@v2.2.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build Docker Image
+        working-directory: Microservices 
+        run: |
+          docker build -t ${{ vars.DOCKERHUB_USERNAME }}/python-microservice:3.0.0 .
+
+      - name: Push Docker Image
+        run: |
+          docker push ${{ vars.DOCKERHUB_USERNAME }}/python-microservice:3.0.0
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build  
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "latest" 
+
+      - name: Update kubeconfig
+        run: aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name TestEKS
+
+      - name: Deploy application to EKS
+        run: kubectl apply -f k8s/
+      
+      - name: Get LoadBalancer IP
+        id: get-lb-ip
+        run: |
+          LB_IP=$(kubectl get svc python-microservice-lb -n test -o jsonpath="{.status.loadBalancer.ingress[0].hostname}")
+          echo "LoadBalancer IP: $LB_IP"
+          echo "LB_IP=$LB_IP" >> $GITHUB_ENV
+
+      - name: Test API
+        run: curl -X GET http://$LB_IP/products
