@@ -8,7 +8,7 @@ on:
   #     - "run.py"
   #     - "app/**"  # Include app directory in case of dependency changes
   #   branches:
-  #     - main  # Modify if your default branch is different
+  #     - master # Modify if your default branch is different
 
   workflow_dispatch:  # Allows manual trigger
 
